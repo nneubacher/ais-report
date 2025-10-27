@@ -1,0 +1,1 @@
+Bin ich gerade zu faul für

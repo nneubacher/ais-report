@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ship Report AI Generator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .spinner {
+            border: 4px solid rgba(0, 0, 0, 0.1);
+            border-left-color: #3b82f6;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        #close-modal-button {
+            font-size: 2rem;
+            line-height: 1rem;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen p-4">
+
+    <div class="w-full max-w-2xl bg-white rounded-xl shadow-2xl overflow-hidden">
+        
+        <!-- Header -->
+        <div class="bg-gray-800 p-6">
+            <h1 class="text-2xl font-bold text-white text-center">AI Ship Data Analyst</h1>
+            <p class="text-sm text-gray-300 text-center mt-1">Upload your CSV to generate an executive summary.</p>
+        </div>
+
+        <!-- Stepper -->
+        <nav class="p-6 border-b border-gray-200">
+            <ol class="flex items-center justify-between w-full space-x-4">
+                <!-- Step 1: Upload -->
+                <li id="step-1" class="flex items-center text-blue-600 font-semibold">
+                    <span id="step-1-icon" class="flex-shrink-0 w-6 h-6 flex items-center justify-center rounded-full bg-blue-600 text-white font-bold text-sm mr-2">1</span>
+                    <span>Upload CSV</span>
+                </li>
+
+                <li class="flex-1 h-px bg-gray-300"></li>
+
+                <!-- Step 2: Analyze -->
+                <li id="step-2" class="flex items-center text-gray-500">
+                    <span id="step-2-icon" class="flex-shrink-0 w-6 h-6 flex items-center justify-center rounded-full bg-gray-300 text-gray-600 font-bold text-sm mr-2">2</span>
+                    <span>Analyze Data</span>
+                </li>
+
+                <li class="flex-1 h-px bg-gray-300"></li>
+
+                <!-- Step 3: Generate -->
+                <li id="step-3" class="flex items-center text-gray-500">
+                    <span id="step-3-icon" class="flex-shrink-0 w-6 h-6 flex items-center justify-center rounded-full bg-gray-300 text-gray-600 font-bold text-sm mr-2">3</span>
+                    <span>Generate Insights</span>
+                </li>
+
+                <li class="flex-1 h-px bg-gray-300"></li>
+
+                <!-- Step 4: Download -->
+                <li id="step-4" class="flex items-center text-gray-500">
+                    <span id="step-4-icon" class="flex-shrink-0 w-6 h-6 flex items-center justify-center rounded-full bg-gray-300 text-gray-600 font-bold text-sm mr-2">4</span>
+                    <span>Download</span>
+                </li>
+            </ol>
+        </nav>
+
+        <!-- Main Content Area -->
+        <div class="p-8">
+
+            <!-- UPLOAD STEP -->
+            <div id="upload-step">
+                <h2 class="text-lg font-semibold text-gray-800 mb-4">Step 1: Upload Your Ship Data CSV</h2>
+                
+                <!-- File Upload Area -->
+                <label for="file-upload" class="flex flex-col items-center justify-center w-full h-48 border-2 border-gray-300 border-dashed rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100 transition">
+                    <div class="flex flex-col items-center justify-center pt-5 pb-6">
+                        <!-- Upload Icon SVG -->
+                        <svg class="w-10 h-10 mb-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-4-4V6a4 4 0 014-4h10a4 4 0 014 4v6a4 4 0 01-4 4H7z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 11v6m0 0l-3-3m3 3l3-3"></path></svg>
+                        <p class="mb-2 text-sm text-gray-500"><span class="font-semibold">Click to upload</span> or drag and drop</p>
+                        <p class="text-xs text-gray-500">CSV file (MAX. 5MB)</p>
+                    </div>
+                    <input id="file-upload" type="file" class="hidden" accept=".csv" />
+                </label>
+
+                <!-- File Name Display -->
+                <div id="file-name-display" class="mt-4 text-sm text-gray-700 font-medium hidden">
+                    File selected: <span id="file-name" class="text-blue-600"></span>
+                </div>
+
+                <!-- Error Message Display -->
+                <div id="error-message" class="mt-4 text-sm text-red-600 font-medium hidden"></div>
+
+                <!-- Action Button -->
+                <div class="mt-6 text-right">
+                    <button id="analyze-button" class="px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 transition disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                        Analyze and Generate Report
+                    </button>
+                </div>
+            </div>
+
+            <!-- PROCESSING STEP -->
+            <div id="processing-step" class="hidden">
+                <div class="flex flex-col items-center justify-center min-h-[250px]">
+                    <div class="spinner"></div>
+                    <h2 id="processing-status" class="mt-4 text-lg font-semibold text-gray-700"></h2>
+                    <p class="text-gray-500">This may take a few moments...</p>
+                </div>
+            </div>
+
+            <!-- COMPLETE STEP -->
+            <div id="complete-step" class="hidden">
+                <div class="flex flex-col items-center justify-center min-h-[250px]">
+                    <!-- Success Icon SVG -->
+                    <svg class="w-16 h-16 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    <h2 class="mt-4 text-2xl font-bold text-gray-800">Report Generated Successfully!</h2>
+                    <p class="text-gray-600 mt-1">Your AI-powered executive summary is ready.</p>
+                    <div class="flex flex-wrap justify-center space-x-0 sm:space-x-4">
+                        <button id="download-button" class="mt-6 w-full sm:w-auto px-8 py-3 bg-green-600 text-white font-semibold rounded-lg shadow-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50 transition">
+                            Download Report (.md)
+                        </button>
+                         <button id="show-prompt-button" class="mt-6 w-full sm:w-auto px-8 py-3 bg-gray-600 text-white font-semibold rounded-lg shadow-md hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-opacity-50 transition">
+                            View AI Prompt
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Modal for showing the prompt -->
+            <div id="prompt-modal" class="fixed inset-0 bg-gray-800 bg-opacity-75 flex items-center justify-center p-4 hidden">
+                <div class="bg-white rounded-lg shadow-xl w-full max-w-3xl max-h-[80vh] flex flex-col">
+                    <div class="flex justify-between items-center p-4 border-b">
+                        <h3 class="text-lg font-semibold">Generated AI Prompt</h3>
+                        <button id="close-modal-button" class="text-gray-500 hover:text-gray-800">&times;</button>
+                    </div>
+                    <pre id="prompt-content" class="p-4 overflow-auto text-sm bg-gray-50 flex-1"></pre>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        // --- DOM Elements ---
+        const fileUpload = document.getElementById('file-upload');
+        const fileNameDisplay = document.getElementById('file-name-display');
+        const fileName = document.getElementById('file-name');
+        const analyzeButton = document.getElementById('analyze-button');
+        const errorMessage = document.getElementById('error-message');
+        
+        const uploadStep = document.getElementById('upload-step');
+        const processingStep = document.getElementById('processing-step');
+        const completeStep = document.getElementById('complete-step');
+        const processingStatus = document.getElementById('processing-status');
+        
+        const downloadButton = document.getElementById('download-button');
+        const showPromptButton = document.getElementById('show-prompt-button');
+        const promptModal = document.getElementById('prompt-modal');
+        const promptContent = document.getElementById('prompt-content');
+        const closeModalButton = document.getElementById('close-modal-button');
+
+        // --- Stepper Elements ---
+        const steps = {
+            1: { li: document.getElementById('step-1'), icon: document.getElementById('step-1-icon') },
+            2: { li: document.getElementById('step-2'), icon: document.getElementById('step-2-icon') },
+            3: { li: document.getElementById('step-3'), icon: document.getElementById('step-3-icon') },
+            4: { li: document.getElementById('step-4'), icon: document.getElementById('step-4-icon') }
+        };
+
+        const checkmarkSVG = `
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path>
+            </svg>
+        `; 
+
+        // --- State ---
+        let selectedFile = null;
+        let currentStep = 1;
+        let finalReportContent = ""; 
+        let generatedPrompt = ""; 
+
+        // --- Functions ---
+        
+        /**
+         * Updates the stepper UI based on the current step
+         * @param {number} step - The current active step (1-4)
+         */
+        function updateStepper(step) {
+            currentStep = step;
+            for (let i = 1; i <= 4; i++) {
+                const stepEl = steps[i];
+                if (!stepEl || !stepEl.li || !stepEl.icon) {
+                    console.error('Stepper element not found for step ' + i);
+                    continue;
+                }
+                
+                stepEl.li.classList.remove('text-gray-500', 'text-blue-600', 'text-green-600', 'font-semibold');
+                stepEl.icon.classList.remove('bg-gray-300', 'bg-blue-600', 'bg-green-600', 'text-white', 'text-gray-600');
+                
+                if (i < step) {
+                    // Completed step
+                    stepEl.li.classList.add('text-green-600', 'font-semibold');
+                    stepEl.icon.classList.add('bg-green-600', 'text-white');
+                    stepEl.icon.innerHTML = checkmarkSVG;
+                } else if (i === step) {
+                    // Active step
+                    stepEl.li.classList.add('text-blue-600', 'font-semibold');
+                    stepEl.icon.classList.add('bg-blue-600', 'text-white');
+                    stepEl.icon.innerHTML = i;
+                } else {
+                    // Future step
+                    stepEl.li.classList.add('text-gray-500');
+                    stepEl.icon.classList.add('bg-gray-300', 'text-gray-600');
+                    stepEl.icon.innerHTML = i;
+                }
+            }
+        }
+
+        /**
+         * Handles the file selection event
+         */
+        function handleFileSelect(event) {
+            selectedFile = event.target.files[0];
+            errorMessage.classList.add('hidden');
+            if (selectedFile) {
+                if (selectedFile.name.endsWith('.csv')) {
+                    fileName.textContent = selectedFile.name;
+                    fileNameDisplay.classList.remove('hidden');
+                    analyzeButton.disabled = false;
+                } else {
+                    showError('Invalid file type. Please select a .csv file.');
+                    selectedFile = null;
+                    fileNameDisplay.classList.add('hidden');
+                    analyzeButton.disabled = true;
+                }
+            } else {
+                fileNameDisplay.classList.add('hidden');
+                analyzeButton.disabled = true;
+            }
+        }
+
+        /**
+         * Displays an error message to the user
+         */
+        function showError(message) {
+            errorMessage.textContent = message;
+            errorMessage.classList.remove('hidden');
+        }
+
+        /**
+         * Resets the UI to the initial upload state
+         */
+        function resetToUpload() {
+            uploadStep.classList.remove('hidden');
+            processingStep.classList.add('hidden');
+            completeStep.classList.add('hidden');
+            analyzeButton.disabled = false;
+            processingStatus.textContent = '';
+            updateStepper(1);
+        }
+
+        /**
+         * --- NEW: Updated startAnalysis function ---
+         * Calls /analyze, updates UI, then calls /generate
+         */
+        async function startAnalysis() {
+            if (!selectedFile) {
+                showError('Please select a file first.');
+                return;
+            }
+
+            // --- 1. Prepare UI for processing ---
+            analyzeButton.disabled = true;
+            uploadStep.classList.add('hidden');
+            processingStep.classList.remove('hidden');
+            errorMessage.classList.add('hidden');
+
+            const formData = new FormData();
+            formData.append('file', selectedFile);
+
+            try {
+                // --- 2. Call Phase 1: Data Analysis (Backend) ---
+                updateStepper(2);
+                processingStatus.textContent = 'Uploading and analyzing ship data...';
+
+                const responseAnalyze = await fetch('http://127.0.0.1:5000/analyze', {
+                    method: 'POST',
+                    body: formData,
+                });
+
+                if (!responseAnalyze.ok) {
+                    const err = await responseAnalyze.json();
+                    throw new Error(err.error || `Server error: ${responseAnalyze.status}`);
+                }
+
+                const resultAnalyze = await responseAnalyze.json();
+                
+                // --- 3. Call Phase 2: AI Generation (Backend) ---
+                updateStepper(3);
+                processingStatus.textContent = 'Generating AI insights...';
+                
+                // Store prompt for the modal
+                generatedPrompt = resultAnalyze.generated_prompt;
+
+                const responseGenerate = await fetch('http://127.0.0.1:5000/generate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ prompt: generatedPrompt })
+                });
+
+                if (!responseGenerate.ok) {
+                    const err = await responseGenerate.json();
+                    throw new Error(err.error || `Server error: ${responseGenerate.status}`);
+                }
+
+                const resultGenerate = await responseGenerate.json();
+
+                // --- 4. Finish: Show Completion UI ---
+                finalReportContent = resultGenerate.llm_response;
+
+                processingStep.classList.add('hidden');
+                completeStep.classList.remove('hidden');
+                updateStepper(4);
+
+            } catch (error) {
+                // --- Handle Errors ---
+                console.error('Analysis failed:', error);
+                // Handle fetch error (e.g., server not running)
+                if (error instanceof TypeError) { 
+                    showError('Connection failed. Is the backend server running?');
+                } else {
+                    showError(error.message);
+                }
+                resetToUpload();
+            }
+        }
+
+        /**
+         * Generates and downloads the received report
+         */
+        function downloadReport() {
+            const blob = new Blob([finalReportContent], { type: 'text/markdown' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.download = `${selectedFile.name.replace('.csv', '')}_AI_Report.md`;
+            a.href = url;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        /**
+         * Shows the modal with the generated prompt
+         */
+        function showPrompt() {
+            promptContent.textContent = generatedPrompt;
+            promptModal.classList.remove('hidden');
+        }
+
+        /**
+         * Hides the prompt modal
+         */
+        function hidePrompt() {
+            promptModal.classList.add('hidden');
+        }
+
+        // --- Event Listeners ---
+        fileUpload.addEventListener('change', handleFileSelect);
+        analyzeButton.addEventListener('click', startAnalysis);
+        downloadButton.addEventListener('click', downloadReport);
+        showPromptButton.addEventListener('click', showPrompt);
+        closeModalButton.addEventListener('click', hidePrompt);
+        promptModal.addEventListener('click', (e) => {
+            // Close if clicking on the background
+            if (e.target === promptModal) {
+                hidePrompt();
+            }
+        });
+
+        // --- Initial State ---
+        updateStepper(1);
+
+    </script>
+</body>
+</html>
+

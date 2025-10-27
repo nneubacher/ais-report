@@ -1,0 +1,9 @@
+pandas
+flask
+flask-cors
+python-dotenv
+langchain-ollama
+requests
+langchain-core
+ibm-watsonx-ai
+langchain-ibm
