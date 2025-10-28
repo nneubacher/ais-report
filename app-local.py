@@ -22,10 +22,14 @@ if not os.environ.get("OLLAMA_MODEL"):
 app = Flask(__name__)
 CORS(app)
 
-def analyze_dataframe(df):
-    insights = {}
-    print("\n--- [Insight Engine] Start ---")
-
+def clean_dataframe(df):
+    """
+    Takes a raw dataframe and returns a cleaned dataframe.
+    - Converts all numeric columns.
+    - Engineers 'Efficiency_Rating_Type' feature.
+    """
+    print("\n--- [Data Cleaner] Start ---")
+    
     numeric_cols = [
         'total_distance_nm', 'total_Fuel_consumption_kg', 'total_CO₂_emissions_kg_CO₂',
         'Total fuel consumption [m tonnes]', 'Total CO₂ emissions [m tonnes]',
@@ -36,87 +40,85 @@ def analyze_dataframe(df):
         'CO₂eq emissions per distance [kg CO₂eq / n mile]',
         'VesselType', 'Length', 'Width', 'Draft'
     ]
-
+    
     for col in numeric_cols:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors='coerce')
         else:
-            print(f"Warning: Expected numeric column '{col}' not found.")
-
-    print("\n--- [Insight Engine] After Numeric Conversion: ---")
+            print(f"Warning: Expected numeric column '{col}' not found in CSV.")
+    
+    print("\n--- [Data Cleaner] After Numeric Conversion: ---")
     buffer = io.StringIO()
     df.info(buf=buffer)
     print(buffer.getvalue())
 
     if 'Technical efficiency' in df.columns:
         df['Efficiency_Rating_Type'] = df['Technical efficiency'].astype(str).str.split(' ').str[0].str.strip('()')
-        print("\n--- [Insight Engine] Technical Rating Types Found: ---")
+        print("\n--- [Data Cleaner] Technical Rating Types Found: ---")
         print(df['Efficiency_Rating_Type'].value_counts())
     else:
         print("Warning: 'Technical efficiency' column not found.")
         df['Efficiency_Rating_Type'] = 'Unknown'
+        
+    return df
 
+def analyze_fleet_overview(df):
+    """
+    Performs the original "Fleet Overview" analysis.
+    """
+    insights = {}
+    print("\n--- [Insight Engine] Running: General Overview ---")
+    
     valid_df = df[df['CO₂ emissions per distance [kg CO₂ / n mile]'] > 0].copy()
-
+    
     insights['total_vessels'] = len(df)
     insights['valid_efficiency_entries'] = len(valid_df)
     insights['invalid_entries'] = insights['total_vessels'] - insights['valid_efficiency_entries']
 
-    efficiency_stats = valid_df['CO₂ emissions per distance [kg CO₂ / n mile]'].describe()
-    insights['fleet_efficiency_stats'] = {
-        'mean': efficiency_stats.get('mean', 0),
-        'median': efficiency_stats.get('50%', 0),
-        '25th_percentile': efficiency_stats.get('25%', 0),
-        '75th_percentile': efficiency_stats.get('75%', 0),
-        'min': efficiency_stats.get('min', 0),
-        'max': efficiency_stats.get('max', 0)
-    }
-
+    # Fleet-wide Statistics
+    insights['fleet_efficiency_stats'] = valid_df['CO₂ emissions per distance [kg CO₂ / n mile]'].describe().to_dict()
     insights['time_at_sea_stats'] = df['Time spent at sea [hours]'].describe().to_dict()
     insights['distance_stats'] = df['total_distance_nm'].describe().to_dict()
 
-    avg_by_shiptype = valid_df.groupby('Ship type')['CO₂ emissions per distance [kg CO₂ / n mile]'].mean().sort_values(ascending=False)
-    insights['avg_by_shiptype'] = avg_by_shiptype.to_dict()
+    # Analysis by Ship Type
+    insights['avg_by_shiptype'] = valid_df.groupby('Ship type')['CO₂ emissions per distance [kg CO₂ / n mile]'].mean().sort_values(ascending=False).to_dict()
 
+    # Analysis by Technical Rating
     avg_by_rating = valid_df.groupby('Efficiency_Rating_Type')['CO₂ emissions per distance [kg CO₂ / n mile]'].mean().sort_values(ascending=False)
     if not avg_by_rating.empty:
         insights['avg_by_rating'] = avg_by_rating.to_dict()
 
-    top_5_efficient = valid_df.sort_values(by='CO₂ emissions per distance [kg CO₂ / n mile]', ascending=True).head(5)
-    insights['top_5_efficient'] = top_5_efficient[['Name', 'Ship type', 'CO₂ emissions per distance [kg CO₂ / n mile]']].to_dict('records')
-
+    # Top/Bottom Performers
+    insights['top_5_efficient'] = valid_df.sort_values(by='CO₂ emissions per distance [kg CO₂ / n mile]', ascending=True).head(5)[['Name', 'Ship type', 'CO₂ emissions per distance [kg CO₂ / n mile]']].to_dict('records')
+    
     least_efficient_df = df.copy()
     least_efficient_df['CO₂ emissions per distance [kg CO₂ / n mile]'] = least_efficient_df['CO₂ emissions per distance [kg CO₂ / n mile]'].fillna(0)
-    top_5_least_efficient = least_efficient_df.sort_values(by='CO₂ emissions per distance [kg CO₂ / n mile]', ascending=False).head(5)
-    insights['top_5_least_efficient'] = top_5_least_efficient[['Name', 'Ship type', 'CO₂ emissions per distance [kg CO₂ / n mile]']].to_dict('records')
+    insights['top_5_least_efficient'] = least_efficient_df.sort_values(by='CO₂ emissions per distance [kg CO₂ / n mile]', ascending=False).head(5)[['Name', 'Ship type', 'CO₂ emissions per distance [kg CO₂ / n mile]']].to_dict('records')
 
+    # Top Emitter Impact (Pareto Principle)
     df_sorted_by_total = df.sort_values(by='total_CO₂_emissions_kg_CO₂', ascending=False)
     total_fleet_emissions = df_sorted_by_total['total_CO₂_emissions_kg_CO₂'].sum()
-
+    
     num_top_10_percent = int(len(df_sorted_by_total) * 0.10)
     top_10_percent_emissions = df_sorted_by_total.head(num_top_10_percent)['total_CO₂_emissions_kg_CO₂'].sum()
-
-    if total_fleet_emissions > 0:
-        percentage_impact = (top_10_percent_emissions / total_fleet_emissions) * 100
-    else:
-        percentage_impact = 0
-
+    
     insights['pareto_analysis'] = {
         'top_10_percent_count': num_top_10_percent,
-        'top_10_percent_impact_pct': percentage_impact,
+        'top_10_percent_impact_pct': (top_10_percent_emissions / total_fleet_emissions * 100) if total_fleet_emissions > 0 else 0,
         'total_fleet_emissions_kg': total_fleet_emissions
     }
 
+    # Correlation Analysis
     insights['correlation'] = {}
-
     corr_cols_activity = ['Time spent at sea [hours]', 'total_distance_nm', 'total_CO₂_emissions_kg_CO₂']
     if all(col in df.columns for col in corr_cols_activity):
-        corr_matrix_activity = df[corr_cols_activity].corr()
-        insights['correlation']['activity_vs_total_emissions'] = {
-            'time_vs_total_emissions': corr_matrix_activity.loc['Time spent at sea [hours]', 'total_CO₂_emissions_kg_CO₂'],
-            'distance_vs_total_emissions': corr_matrix_activity.loc['total_distance_nm', 'total_CO₂_emissions_kg_CO₂']
-        }
-
+        corr_matrix_activity = df[corr_cols_activity].dropna().corr()
+        if not corr_matrix_activity.empty:
+            insights['correlation']['activity_vs_total_emissions'] = {
+                'time_vs_total_emissions': corr_matrix_activity.loc['Time spent at sea [hours]', 'total_CO₂_emissions_kg_CO₂'],
+                'distance_vs_total_emissions': corr_matrix_activity.loc['total_distance_nm', 'total_CO₂_emissions_kg_CO₂']
+            }
+    
     corr_cols_efficiency = ['Length', 'Width', 'Draft', 'CO₂ emissions per distance [kg CO₂ / n mile]']
     if all(col in valid_df.columns for col in corr_cols_efficiency):
         corr_matrix_efficiency = valid_df[corr_cols_efficiency].dropna().corr()
@@ -126,12 +128,17 @@ def analyze_dataframe(df):
                 'width_vs_efficiency': corr_matrix_efficiency.loc['Width', 'CO₂ emissions per distance [kg CO₂ / n mile]'],
                 'draft_vs_efficiency': corr_matrix_efficiency.loc['Draft', 'CO₂ emissions per distance [kg CO₂ / n mile]']
             }
-
-    print("\n--- [Insight Engine] Analysis Complete ---")
+            
+    print("\n--- [Insight Engine] General Overview Complete ---")
     return insights
 
-def generate_prompt_from_insights(insights):
-
+def generate_fleet_overview_prompt(insights):
+    """
+    Generates the prompt for the "Fleet Overview" analysis.
+    (This is the original prompt generator, renamed)
+    """
+    
+    # Helper to format list of dicts into a clean string
     def format_dict_list(title, data_list, value_key):
         s = f"[{title}]\n"
         if not data_list:
@@ -140,6 +147,7 @@ def generate_prompt_from_insights(insights):
             s += f"{i}. {item['Name']} ({item['Ship type']}): {item.get(value_key, 0):,.2f} kg/nm\n"
         return s
 
+    # Helper to format the ship type/rating averages
     def format_dict_averages(title, data_dict):
         s = f"[{title}]\n"
         if not data_dict:
@@ -148,44 +156,46 @@ def generate_prompt_from_insights(insights):
             s += f"- {key}: {avg:,.2f} kg/nm\n"
         return s
 
+    # Build prompt sections
     avg_by_shiptype_str = format_dict_averages("Efficiency by Ship Type (Avg CO2/nm)", insights.get('avg_by_shiptype', {}))
     avg_by_rating_str = format_dict_averages("Efficiency by Technical Rating (Avg CO2/nm)", insights.get('avg_by_rating', {}))
     top_5_efficient_str = format_dict_list("Top 5 Most Efficient Vessels (Lowest CO2/nm)", insights.get('top_5_efficient', []), 'CO₂ emissions per distance [kg CO₂ / n mile]')
     top_5_least_efficient_str = format_dict_list("Top 5 Least Efficient Vessels (Highest CO2/nm)", insights.get('top_5_least_efficient', []), 'CO₂ emissions per distance [kg CO₂ / n mile]')
-
+    
     pareto = insights.get('pareto_analysis', {})
     pareto_str = (f"The top 10% of vessels ({pareto.get('top_10_percent_count', 0)} ships) "
                   f"account for {pareto.get('top_10_percent_impact_pct', 0):.2f}% "
-                  f"of the total fleet emissions ({pareto.get('total_fleet_emissions_kg', 0):,.0f} kg).")
+                  f"of the total emissions ({pareto.get('total_fleet_emissions_kg', 0):,.0f} kg).")
 
     corr_activity = insights.get('correlation', {}).get('activity_vs_total_emissions', {})
     corr_activity_str = (f"- Time vs. Total Emissions: {corr_activity.get('time_vs_total_emissions', 0):.3f}\n"
                          f"- Distance vs. Total Emissions: {corr_activity.get('distance_vs_total_emissions', 0):.3f}")
-
+    
     corr_efficiency = insights.get('correlation', {}).get('size_vs_efficiency', {})
     corr_efficiency_str = (f"- Length vs. Efficiency (CO2/nm): {corr_efficiency.get('length_vs_efficiency', 0):.3f}\n"
                            f"- Width vs. Efficiency (CO2/nm): {corr_efficiency.get('width_vs_efficiency', 0):.3f}\n"
                            f"- Draft vs. Efficiency (CO2/nm): {corr_efficiency.get('draft_vs_efficiency', 0):.3f}")
 
+    # The Final Prompt
     prompt = f"""
 You are a world-class shipping industry analyst and sustainability expert.
 Your task is to write a concise, professional executive summary for a report on
-fleet performance. Use the following key insights to write your summary.
+general performance. Use the following key insights to write your summary.
 Do not just list the data; interpret it. Focus on the *meaning* of the numbers.
 
---- KEY INSIGHTS ---
+--- KEY INSIGHTS (GENERAL OVERVIEW) ---
 
-[Overall Fleet Statistics]
+[Overall Statistics]
 - Total Vessels Analyzed: {insights.get('total_vessels', 0)}
 - Total Valid Efficiency Entries: {insights.get('valid_efficiency_entries', 0)} ({insights.get('invalid_entries', 0)} entries were invalid/missing)
 
-[Fleet Efficiency (CO2/nm) Distribution]
-- 75th Percentile: {insights.get('fleet_efficiency_stats', {}).get('75th_percentile', 0):,.2f} kg/nm
-- 50th Percentile (Median): {insights.get('fleet_efficiency_stats', {}).get('median', 0):,.2f} kg/nm
-- 25th Percentile: {insights.get('fleet_efficiency_stats', {}).get('25th_percentile', 0):,.2f} kg/nm
+[General Efficiency (CO2/nm) Distribution]
+- 75th Percentile: {insights.get('fleet_efficiency_stats', {}).get('75%', 0):,.2f} kg/nm
+- 50th Percentile (Median): {insights.get('fleet_efficiency_stats', {}).get('50%', 0):,.2f} kg/nm
+- 25th Percentile: {insights.get('fleet_efficiency_stats', {}).get('25%', 0):,.2f} kg/nm
 - Note: The mean ({insights.get('fleet_efficiency_stats', {}).get('mean', 0):,.2f} kg/nm) is heavily skewed by outliers and should be used with caution.
 
-[Fleet Activity (Median)]
+[General Activity (Median)]
 - Median Time at Sea: {insights.get('time_at_sea_stats', {}).get('50%', 0):,.2f} hours
 - Median Distance Traveled: {insights.get('distance_stats', {}).get('50%', 0):,.2f} nautical miles
 
@@ -206,12 +216,102 @@ Do not just list the data; interpret it. Focus on the *meaning* of the numbers.
 
 --- END OF INSIGHTS ---
 
-Please write the executive summary now. Start directly with the text.
+Please write the executive summary now. Start by presenting the key insights in a structured manner and after summarize the findings in human-language.
 """
     return prompt.strip()
 
-def call_local_ollama(prompt):
 
+# --- NEW: Step 2b - Company Deep Dive Analysis ---
+def analyze_company_deep_dive(df, company_name):
+    """
+    Performs the new "Company Deep Dive" analysis.
+    Filters for the company and compares its stats to the general average.
+    """
+    insights = {}
+    print(f"\n--- [Insight Engine] Running: Company Deep Dive for: {company_name} ---")
+    
+    # --- 1. Filter for the company ---
+    # Use str.contains for partial, case-insensitive matching
+    company_df = df[df['Name_1'].str.contains(company_name, case=False, na=False)].copy()
+    
+    if company_df.empty:
+        raise ValueError(f"No company found matching the name '{company_name}' in the 'Name_1' column.")
+        
+    insights['company_name'] = company_name
+    insights['vessel_count'] = len(company_df)
+    
+    # --- 2. Get Company Stats ---
+    company_valid_df = company_df[company_df['CO₂ emissions per distance [kg CO₂ / n mile]'] > 0]
+    
+    insights['company_stats'] = {
+        'median_efficiency_kg_nm': company_valid_df['CO₂ emissions per distance [kg CO₂ / n mile]'].median(),
+        'median_time_at_sea_hr': company_df['Time spent at sea [hours]'].median(),
+        'median_distance_nm': company_df['total_distance_nm'].median(),
+        'total_emissions_kg': company_df['total_CO₂_emissions_kg_CO₂'].sum(),
+        'vessel_list': company_df['Name'].tolist()
+    }
+    
+    # --- 3. Get Fleet-wide Stats for Comparison ---
+    fleet_valid_df = df[df['CO₂ emissions per distance [kg CO₂ / n mile]'] > 0]
+    
+    insights['fleet_comparison_stats'] = {
+        'median_efficiency_kg_nm': fleet_valid_df['CO₂ emissions per distance [kg CO₂ / n mile]'].median(),
+        'median_time_at_sea_hr': df['Time spent at sea [hours]'].median(),
+        'median_distance_nm': df['total_distance_nm'].median(),
+        'average_vessel_emissions_kg': df['total_CO₂_emissions_kg_CO₂'].mean()
+    }
+    
+    print("\n--- [Insight Engine] Company Deep Dive Complete ---")
+    return insights
+
+# --- NEW: Step 3b - Company Deep Dive Prompt ---
+def generate_company_deep_dive_prompt(insights):
+    """
+    Generates the new prompt for the "Company Deep Dive" analysis.
+    """
+    
+    company = insights.get('company_name', 'The Company')
+    company_stats = insights.get('company_stats', {})
+    fleet_stats = insights.get('fleet_comparison_stats', {})
+    
+    prompt = f"""
+You are a professional data auditor and sustainability analyst.
+Your task is to write an executive summary comparing a specific company's fleet performance against the overall average of all tracked companies.
+Focus on whether the company is performing better or worse than the average.
+
+--- KEY INSIGHTS (COMPANY DEEP DIVE) ---
+
+[Company Analyzed]
+- Name: {company}
+- Vessels Found: {insights.get('vessel_count', 0)}
+- Vessel Names: {', '.join(company_stats.get('vessel_list', []))}
+
+[Company Performance]
+- Median Efficiency: {company_stats.get('median_efficiency_kg_nm', 0):,.2f} kg CO2/nm
+- Median Time at Sea: {company_stats.get('median_time_at_sea_hr', 0):,.2f} hours
+- Median Distance Traveled: {company_stats.get('median_distance_nm', 0):,.2f} nm
+- Total Company Fleet Emissions: {company_stats.get('total_emissions_kg', 0):,.0f} kg CO2
+
+[General Average (for Comparison)]
+- General Median Efficiency: {fleet_stats.get('median_efficiency_kg_nm', 0):,.2f} kg CO2/nm
+- General Median Time at Sea: {fleet_stats.get('median_time_at_sea_hr', 0):,.2f} hours
+- General Median Distance Traveled: {fleet_stats.get('median_distance_nm', 0):,.2f} nm
+- General Avg. Total Emissions (per vessel): {fleet_stats.get('average_vessel_emissions_kg', 0):,.0f} kg CO2
+
+--- END OF INSIGHTS ---
+
+Please write the executive summary now. Start by presenting the key insights in a structured manner and after summarize the findings in human-language.
+Start by stating which company you are analyzing.
+Compare the company's efficiency, activity, and total emissions to all tracked companies,
+and conclude whether they are a high or low performer.
+"""
+    return prompt.strip()
+
+
+def call_local_ollama(prompt):
+    """
+    This is the Ollama-specific LLM call function.
+    """
     print(f"--- Calling local Ollama (Model: {OLLAMA_MODEL}) at {OLLAMA_BASE_URL} ---")
 
     try:
@@ -219,7 +319,8 @@ def call_local_ollama(prompt):
             base_url=OLLAMA_BASE_URL,
             model=OLLAMA_MODEL,
             temperature=0.2,
-            num_predict=1024,
+            num_predict=1024, # Ollama parameter
+            # You can add other Ollama-specific params here, e.g., 'top_p', 'repeat_penalty'
             callbacks=[StreamingStdOutCallbackHandler()]
         )
 
@@ -238,6 +339,43 @@ def call_local_ollama(prompt):
         print(f"ERROR: {error_msg}")
         raise RuntimeError(error_msg)
 
+@app.route('/get-company-list', methods=['POST'])
+def get_company_list_endpoint():
+    """
+    This new endpoint reads the uploaded CSV and returns a
+    unique, sorted list of company names from the 'Name_1' column.
+    """
+    if 'file' not in request.files:
+        return jsonify({"error": "No file part"}), 400
+    
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({"error": "No selected file"}), 400
+
+    if file and file.filename.endswith('.csv'):
+        try:
+            # Read only the 'Name_1' column to be faster
+            df = pd.read_csv(file, usecols=['Name_1'])
+            
+            if 'Name_1' not in df.columns:
+                return jsonify({"error": "Column 'Name_1' not found in CSV."}), 400
+                
+            # Get unique, non-null, non-empty names
+            names = df['Name_1'].dropna().unique().tolist()
+            clean_names = [name for name in names if isinstance(name, str) and name.strip()]
+            clean_names.sort() # Sort them alphabetically
+            
+            return jsonify({"companies": clean_names})
+
+        except ValueError as ve:
+             # Handle case where usecols fails if 'Name_1' isn't in the file
+            if "usecols" in str(ve):
+                 return jsonify({"error": "Column 'Name_1' not found in CSV."}), 400
+            return jsonify({"error": f"An error occurred: {str(ve)}"}), 500
+        except Exception as e:
+            return jsonify({"error": f"An error occurred while reading companies: {str(e)}"}), 500
+    else:
+        return jsonify({"error": "Invalid file type, please upload a .csv"}), 400
 
 @app.route('/analyze', methods=['POST'])
 def analyze_endpoint():
@@ -249,13 +387,27 @@ def analyze_endpoint():
     if file.filename == '':
         return jsonify({"error": "No selected file"}), 400
 
+    # Get analysis type and company name from form
+    analysis_type = request.form.get('analysis_type', 'fleet_overview')
+    company_name = request.form.get('company_name', None)
+
     if file and file.filename.endswith('.csv'):
         try:
             df = pd.read_csv(file)
 
-            insights = analyze_dataframe(df)
+            # Use the new, separate cleaner function
+            cleaned_df = clean_dataframe(df)
 
-            prompt_for_llm = generate_prompt_from_insights(insights)
+            # Logic to switch between analysis types
+            if analysis_type == 'company_deep_dive':
+                if not company_name or company_name == "":
+                    raise ValueError("Company name is required and was not provided for deep dive analysis.")
+                insights = analyze_company_deep_dive(cleaned_df, company_name)
+                prompt_for_llm = generate_company_deep_dive_prompt(insights)
+
+            else: # Default to fleet_overview
+                insights = analyze_fleet_overview(cleaned_df)
+                prompt_for_llm = generate_fleet_overview_prompt(insights)
 
             elapsed = time.time() - start_time
             if elapsed < 2.0:
@@ -281,6 +433,7 @@ def generate_endpoint():
     prompt = data['prompt']
     
     try:
+        # Use the Ollama-specific function call
         llm_response = call_local_ollama(prompt)
         
         elapsed = time.time() - start_time
