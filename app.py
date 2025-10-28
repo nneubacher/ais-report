@@ -71,7 +71,7 @@ def analyze_fleet_overview(df):
     Performs the original "Fleet Overview" analysis.
     """
     insights = {}
-    print("\n--- [Insight Engine] Running: Fleet Overview ---")
+    print("\n--- [Insight Engine] Running: General Overview ---")
     
     valid_df = df[df['CO₂ emissions per distance [kg CO₂ / n mile]'] > 0].copy()
     
@@ -133,7 +133,7 @@ def analyze_fleet_overview(df):
                 'draft_vs_efficiency': corr_matrix_efficiency.loc['Draft', 'CO₂ emissions per distance [kg CO₂ / n mile]']
             }
             
-    print("\n--- [Insight Engine] Fleet Overview Complete ---")
+    print("\n--- [Insight Engine] General Overview Complete ---")
     return insights
 
 def generate_fleet_overview_prompt(insights):
@@ -169,7 +169,7 @@ def generate_fleet_overview_prompt(insights):
     pareto = insights.get('pareto_analysis', {})
     pareto_str = (f"The top 10% of vessels ({pareto.get('top_10_percent_count', 0)} ships) "
                   f"account for {pareto.get('top_10_percent_impact_pct', 0):.2f}% "
-                  f"of the total fleet emissions ({pareto.get('total_fleet_emissions_kg', 0):,.0f} kg).")
+                  f"of the total emissions ({pareto.get('total_fleet_emissions_kg', 0):,.0f} kg).")
 
     corr_activity = insights.get('correlation', {}).get('activity_vs_total_emissions', {})
     corr_activity_str = (f"- Time vs. Total Emissions: {corr_activity.get('time_vs_total_emissions', 0):.3f}\n"
@@ -184,22 +184,22 @@ def generate_fleet_overview_prompt(insights):
     prompt = f"""
 You are a world-class shipping industry analyst and sustainability expert.
 Your task is to write a concise, professional executive summary for a report on
-fleet performance. Use the following key insights to write your summary.
+general performance. Use the following key insights to write your summary.
 Do not just list the data; interpret it. Focus on the *meaning* of the numbers.
 
---- KEY INSIGHTS (FLEET OVERVIEW) ---
+--- KEY INSIGHTS (GENERAL OVERVIEW) ---
 
-[Overall Fleet Statistics]
+[Overall Statistics]
 - Total Vessels Analyzed: {insights.get('total_vessels', 0)}
 - Total Valid Efficiency Entries: {insights.get('valid_efficiency_entries', 0)} ({insights.get('invalid_entries', 0)} entries were invalid/missing)
 
-[Fleet Efficiency (CO2/nm) Distribution]
+[General Efficiency (CO2/nm) Distribution]
 - 75th Percentile: {insights.get('fleet_efficiency_stats', {}).get('75%', 0):,.2f} kg/nm
 - 50th Percentile (Median): {insights.get('fleet_efficiency_stats', {}).get('50%', 0):,.2f} kg/nm
 - 25th Percentile: {insights.get('fleet_efficiency_stats', {}).get('25%', 0):,.2f} kg/nm
 - Note: The mean ({insights.get('fleet_efficiency_stats', {}).get('mean', 0):,.2f} kg/nm) is heavily skewed by outliers and should be used with caution.
 
-[Fleet Activity (Median)]
+[General Activity (Median)]
 - Median Time at Sea: {insights.get('time_at_sea_stats', {}).get('50%', 0):,.2f} hours
 - Median Distance Traveled: {insights.get('distance_stats', {}).get('50%', 0):,.2f} nautical miles
 
@@ -220,7 +220,7 @@ Do not just list the data; interpret it. Focus on the *meaning* of the numbers.
 
 --- END OF INSIGHTS ---
 
-Please write the executive summary now. Start directly with the text.
+Please write the executive summary now. Start by presenting the key insights in a structured manner and after summarize the findings in human-language.
 """
     return prompt.strip()
 
@@ -229,7 +229,7 @@ Please write the executive summary now. Start directly with the text.
 def analyze_company_deep_dive(df, company_name):
     """
     Performs the new "Company Deep Dive" analysis.
-    Filters for the company and compares its stats to the fleet average.
+    Filters for the company and compares its stats to the general average.
     """
     insights = {}
     print(f"\n--- [Insight Engine] Running: Company Deep Dive for: {company_name} ---")
@@ -280,7 +280,7 @@ def generate_company_deep_dive_prompt(insights):
     
     prompt = f"""
 You are a professional data auditor and sustainability analyst.
-Your task is to write an executive summary comparing a specific company's fleet performance against the overall fleet average.
+Your task is to write an executive summary comparing a specific company's fleet performance against the overall average of all tracked companies.
 Focus on whether the company is performing better or worse than the average.
 
 --- KEY INSIGHTS (COMPANY DEEP DIVE) ---
@@ -294,19 +294,19 @@ Focus on whether the company is performing better or worse than the average.
 - Median Efficiency: {company_stats.get('median_efficiency_kg_nm', 0):,.2f} kg CO2/nm
 - Median Time at Sea: {company_stats.get('median_time_at_sea_hr', 0):,.2f} hours
 - Median Distance Traveled: {company_stats.get('median_distance_nm', 0):,.2f} nm
-- Total Fleet Emissions: {company_stats.get('total_emissions_kg', 0):,.0f} kg CO2
+- Total Company Fleet Emissions: {company_stats.get('total_emissions_kg', 0):,.0f} kg CO2
 
-[Fleet Average (for Comparison)]
-- Fleet Median Efficiency: {fleet_stats.get('median_efficiency_kg_nm', 0):,.2f} kg CO2/nm
-- Fleet Median Time at Sea: {fleet_stats.get('median_time_at_sea_hr', 0):,.2f} hours
-- Fleet Median Distance Traveled: {fleet_stats.get('median_distance_nm', 0):,.2f} nm
-- Fleet Avg. Total Emissions (per vessel): {fleet_stats.get('average_vessel_emissions_kg', 0):,.0f} kg CO2
+[General Average (for Comparison)]
+- General Median Efficiency: {fleet_stats.get('median_efficiency_kg_nm', 0):,.2f} kg CO2/nm
+- General Median Time at Sea: {fleet_stats.get('median_time_at_sea_hr', 0):,.2f} hours
+- General Median Distance Traveled: {fleet_stats.get('median_distance_nm', 0):,.2f} nm
+- General Avg. Total Emissions (per vessel): {fleet_stats.get('average_vessel_emissions_kg', 0):,.0f} kg CO2
 
 --- END OF INSIGHTS ---
 
-Please write the executive summary now. 
+Please write the executive summary now. Start by presenting the key insights in a structured manner and after summarize the findings in human-language.
 Start by stating which company you are analyzing.
-Compare the company's efficiency, activity, and total emissions to the fleet,
+Compare the company's efficiency, activity, and total emissions to all tracked companies,
 and conclude whether they are a high or low performer.
 """
     return prompt.strip()
